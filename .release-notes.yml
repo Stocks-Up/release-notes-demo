@@ -1,0 +1,22 @@
+# Release notes configuration for Kulu
+
+company:
+  name: "Kulu"
+  logo_url: ""
+  website: "https://kulu.com"
+
+branding:
+  primary_color: "#0A2360"
+  accent_color: "#133E94"
+  background_color: "#F5F7FA"
+  text_color: "#1A1917"
+  heading_font: "Inter"
+  body_font: "Inter"
+
+releases:
+  directory: "releases"
+
+distribution:
+  slack:
+    webhook_file: "~/.slack_kulu_webhook"
+    channel_name: "#kulu_releases"
