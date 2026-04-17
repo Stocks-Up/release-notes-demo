@@ -124,6 +124,7 @@ jobs:
           email = dist.get("email", {})
           pw_file = email.get("smtp_password_file", "")
           pw_value = os.environ.get("GMAIL_APP_PASSWORD", "")
+          print(f"  Debug: email config keys={list(email.keys())}, pw_file={repr(pw_file)}, pw_value_len={len(pw_value)}")
           if pw_file and pw_value:
               path = os.path.expanduser(pw_file)
               os.makedirs(os.path.dirname(path), exist_ok=True)
