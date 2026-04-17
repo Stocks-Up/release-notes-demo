@@ -1,0 +1,258 @@
+# release-notes-ci.yml
+#
+# GitHub Actions workflow that generates release notes on every PR merge to main.
+# Version bump is determined by PR labels: release:major, release:minor, release:patch.
+# PRs without a release label are ignored.
+#
+# Copy this file to your repo at: .github/workflows/release-notes.yml
+#
+# ── Required secrets ─────────────────────────────────────────────────────────
+#   ANTHROPIC_API_KEY     — Claude API key
+#   SLACK_WEBHOOK_URL     — Slack incoming webhook URL (optional)
+#   GMAIL_APP_PASSWORD    — Gmail App Password for sending emails (optional)
+#   AWS_ACCESS_KEY_ID     — For S3 uploads: PDFs and index page (optional)
+#   AWS_SECRET_ACCESS_KEY — For S3 uploads (optional)
+#
+# ── Required repo setup ──────────────────────────────────────────────────────
+#   1. .release-notes.yml at repo root (see assets/example-config.yml)
+#   2. PR labels created: release:major, release:minor, release:patch
+#   3. The release-notes skill published as a repo (see `skill_repo` below)
+#
+# ── Branch protection note ───────────────────────────────────────────────────
+#   This workflow pushes commits and tags directly to main. If your repo has
+#   branch protection, either:
+#     a. Allow the github-actions[bot] to bypass protection rules, or
+#     b. Use a GitHub App token / PAT instead of GITHUB_TOKEN
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Release Notes
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# Prevent concurrent release-notes runs
+concurrency:
+  group: release-notes
+  cancel-in-progress: false
+
+jobs:
+  release-notes:
+    # Only run on merged PRs that have a release label
+    if: >-
+      github.event.pull_request.merged == true &&
+      (contains(github.event.pull_request.labels.*.name, 'release:major') ||
+       contains(github.event.pull_request.labels.*.name, 'release:minor') ||
+       contains(github.event.pull_request.labels.*.name, 'release:patch'))
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write        # push commits, tags, create releases
+      pull-requests: write   # comment on the merged PR
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # ── 2. Checkout skill ────────────────────────────────────────────────
+      # Adjust the repository to wherever you publish the release-notes skill.
+      - name: Checkout release-notes skill
+        uses: actions/checkout@v4
+        with:
+          repository: Stocks-Up/release-notes-skill   # <-- adjust this
+          path: .release-notes-skill
+
+      # ── 3. Calculate version from PR labels ──────────────────────────────
+      - name: Determine version
+        id: version
+        run: |
+          LABELS="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+
+          if echo "$LABELS" | grep -q 'release:major'; then
+            BUMP=major
+          elif echo "$LABELS" | grep -q 'release:minor'; then
+            BUMP=minor
+          else
+            BUMP=patch
+          fi
+
+          LATEST=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          LATEST=${LATEST:-v0.0.0}
+
+          V=${LATEST#v}
+          IFS='.' read -r MAJ MIN PAT <<< "$V"
+          case $BUMP in
+            major) MAJ=$((MAJ+1)); MIN=0; PAT=0 ;;
+            minor) MIN=$((MIN+1)); PAT=0 ;;
+            patch) PAT=$((PAT+1)) ;;
+          esac
+
+          NEW="${MAJ}.${MIN}.${PAT}"
+          echo "bump=$BUMP"    >> "$GITHUB_OUTPUT"
+          echo "current=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW"      >> "$GITHUB_OUTPUT"
+          echo "### Version bump" >> "$GITHUB_STEP_SUMMARY"
+          echo "$LATEST → v$NEW ($BUMP)" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── 4. Setup runtimes ────────────────────────────────────────────────
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          pip install pyyaml boto3
+          npm install -g puppeteer
+
+      # ── 5. Configure git identity ────────────────────────────────────────
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # ── 6. Write credentials to paths expected by .release-notes.yml ─────
+      #
+      # Reads the file paths from .release-notes.yml and writes the
+      # corresponding secrets so the scripts find them at runtime.
+      - name: Setup credentials
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          python3 << 'SETUP'
+          import yaml, os
+
+          config = yaml.safe_load(open(".release-notes.yml"))
+          dist = config.get("distribution", {})
+
+          # Slack webhook
+          slack = dist.get("slack", {})
+          wh_file = slack.get("webhook_file", "")
+          wh_value = os.environ.get("SLACK_WEBHOOK_URL", "")
+          if wh_file and wh_value:
+              path = os.path.expanduser(wh_file)
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              open(path, "w").write(wh_value)
+              print(f"Wrote Slack webhook to {path}")
+
+          # Gmail app password
+          email = dist.get("email", {})
+          pw_file = email.get("smtp_password_file", "")
+          pw_value = os.environ.get("GMAIL_APP_PASSWORD", "")
+          if pw_file and pw_value:
+              path = os.path.expanduser(pw_file)
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              open(path, "w").write(pw_value)
+              print(f"Wrote Gmail app password to {path}")
+
+          # AWS credentials (create a named profile matching the config)
+          pdf = dist.get("pdf", {})
+          profile = pdf.get("aws_profile", "")
+          ak = os.environ.get("AWS_ACCESS_KEY_ID", "")
+          sk = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+          if profile and ak and sk:
+              creds_dir = os.path.expanduser("~/.aws")
+              os.makedirs(creds_dir, exist_ok=True)
+              with open(os.path.join(creds_dir, "credentials"), "w") as f:
+                  f.write(f"[{profile}]\n")
+                  f.write(f"aws_access_key_id={ak}\n")
+                  f.write(f"aws_secret_access_key={sk}\n")
+              print(f"Wrote AWS profile [{profile}]")
+
+          print("Credentials setup complete")
+          SETUP
+
+      # ── 7. Run Claude to create release notes ───────────────────────────
+      - name: Create release notes
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: sonnet
+          max_turns: 30
+
+          prompt: |
+            You are running in CI after a merged PR. Execute every step automatically — do NOT ask for confirmation.
+
+            ## Version
+            - New version: **v${{ steps.version.outputs.new }}** (${{ steps.version.outputs.bump }} bump from ${{ steps.version.outputs.current }})
+
+            ## PR context
+            - Title: ${{ github.event.pull_request.title }}
+            - Author: ${{ github.event.pull_request.user.login }}
+            - Body:
+            ${{ github.event.pull_request.body }}
+
+            ## Skill location
+            - Config: `.release-notes.yml` (repo root)
+            - Writing guide: `.release-notes-skill/references/writing-guide.md`
+            - Slack format: `.release-notes-skill/references/slack-format.md`
+            - Scripts: `.release-notes-skill/scripts/`
+
+            ## Steps to execute
+
+            Read `.release-notes.yml` first. Then follow these steps in order:
+
+            **Step 1 — Analyze changes**
+            ```
+            git log ${{ steps.version.outputs.current }}..HEAD --pretty=format:"%h %s" --name-only
+            ```
+            Focus on user-facing changes.
+
+            **Step 2 — Write release notes**
+            Read `.release-notes-skill/references/writing-guide.md` for the style guide.
+            Create `<releases_dir>/v${{ steps.version.outputs.new }}/RELEASE_NOTES_EN.md` and `RELEASE_NOTES_FR.md`.
+            (`releases_dir` comes from config `releases.directory`, default `releases`)
+
+            **Step 3 — Commit**
+            ```
+            git add <releases_dir>/v${{ steps.version.outputs.new }}/
+            git commit -m "Add release notes for v${{ steps.version.outputs.new }}"
+            ```
+
+            **Step 4 — Tag and push**
+            Create an annotated tag with a concise English summary, then push:
+            ```
+            git tag -a v${{ steps.version.outputs.new }} -m "Release v${{ steps.version.outputs.new }} - <brief title>"
+            git push origin main
+            git push origin v${{ steps.version.outputs.new }}
+            ```
+
+            **Step 5 — GitHub release**
+            Create a GitHub release with combined EN + FR body (separated by `---`).
+
+            **Step 6 — Slack** (skip if `distribution.slack` is not in config)
+            Read `.release-notes-skill/references/slack-format.md` for the Block Kit template.
+
+            **Step 7 — PDFs** (skip if `distribution.pdf` is not in config)
+            ```
+            python3 .release-notes-skill/scripts/generate_release_pdf.py ${{ steps.version.outputs.new }} <releases_dir>/v${{ steps.version.outputs.new }} .release-notes.yml
+            ```
+
+            **Step 8 — Index page** (skip if `distribution.index` is not in config)
+            ```
+            python3 .release-notes-skill/scripts/generate_releases_index.py .release-notes.yml
+            ```
+
+            **Step 9 — Emails** (skip if `distribution.email` is not in config)
+            ```
+            python3 .release-notes-skill/scripts/send_release_email.py ${{ steps.version.outputs.new }} <releases_dir>/v${{ steps.version.outputs.new }} .release-notes.yml
+            ```
+
+            ## Error handling
+            - Steps 1–5 are critical — stop if any fail.
+            - Steps 6–9 are optional — log the error and continue if they fail.
+            - At the end, print a summary checklist of which steps succeeded and which failed.
