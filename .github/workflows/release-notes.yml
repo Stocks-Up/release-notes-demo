@@ -51,6 +51,7 @@ jobs:
     permissions:
       contents: write        # push commits, tags, create releases
       pull-requests: write   # comment on the merged PR
+      id-token: write        # required by claude-code-action OIDC
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────
@@ -181,8 +182,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: sonnet
-          max_turns: 30
+          claude_args: "--model sonnet --max-turns 30"
 
           prompt: |
             You are running in CI after a merged PR. Execute every step automatically — do NOT ask for confirmation.
