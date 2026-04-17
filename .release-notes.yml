@@ -20,3 +20,11 @@ distribution:
   slack:
     webhook_file: "~/.slack_kulu_webhook"
     channel_name: "#kulu_releases"
+
+  email:
+    from: "aml@kulu.com"
+    smtp_user: "aml@kulu.com"
+    smtp_password_file: "~/.gmail_kulu_app_password"
+    recipients:
+      en: "eric@kulu.com"
+      fr: "eric@kulu.com"
