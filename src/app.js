@@ -25,10 +25,36 @@ app.get('/api/reports', (req, res) => {
 
 // User preferences
 app.get('/api/preferences', (req, res) => {
-  res.json({ language: 'en', timezone: 'UTC', theme: 'light' });
+  res.json({
+    language: 'en',
+    timezone: 'UTC',
+    theme: 'light',
+    notifications: {
+      email: true,
+      slack: false,
+      weekly_digest: true,
+      release_alerts: true
+    }
+  });
 });
 
 app.put('/api/preferences', (req, res) => {
+  res.json({ updated: true });
+});
+
+// Notification preferences
+app.get('/api/notifications/settings', (req, res) => {
+  res.json({
+    channels: ['email', 'slack', 'in_app'],
+    preferences: {
+      release_alerts: { email: true, slack: false, in_app: true },
+      weekly_digest: { email: true, slack: false, in_app: false },
+      security_alerts: { email: true, slack: true, in_app: true }
+    }
+  });
+});
+
+app.put('/api/notifications/settings', (req, res) => {
   res.json({ updated: true });
 });
 
