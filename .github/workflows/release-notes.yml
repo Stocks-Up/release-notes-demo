@@ -1,29 +1,13 @@
-# release-notes-ci.yml
+# GitHub Actions workflow — Automated bilingual release notes on PR merge.
 #
-# GitHub Actions workflow that generates release notes on every PR merge to main.
-# Version bump is determined by PR labels: release:major, release:minor, release:patch.
-# PRs without a release label are ignored.
+# HOW IT WORKS:
+#   1. Add a label (release:major, release:minor, release:patch) to your PR
+#   2. Merge the PR to main
+#   3. Claude analyzes commits, writes EN/FR release notes, tags, and distributes
 #
-# Copy this file to your repo at: .github/workflows/release-notes.yml
+# SETUP: See the README at https://github.com/Stocks-Up/release-notes-skill
 #
-# ── Required secrets ─────────────────────────────────────────────────────────
-#   ANTHROPIC_API_KEY     — Claude API key
-#   SLACK_WEBHOOK_URL     — Slack incoming webhook URL (optional)
-#   GMAIL_APP_PASSWORD    — Gmail App Password for sending emails (optional)
-#   AWS_ACCESS_KEY_ID     — For S3 uploads: PDFs and index page (optional)
-#   AWS_SECRET_ACCESS_KEY — For S3 uploads (optional)
-#
-# ── Required repo setup ──────────────────────────────────────────────────────
-#   1. .release-notes.yml at repo root (see assets/example-config.yml)
-#   2. PR labels created: release:major, release:minor, release:patch
-#   3. The release-notes skill published as a repo (see `skill_repo` below)
-#
-# ── Branch protection note ───────────────────────────────────────────────────
-#   This workflow pushes commits and tags directly to main. If your repo has
-#   branch protection, either:
-#     a. Allow the github-actions[bot] to bypass protection rules, or
-#     b. Use a GitHub App token / PAT instead of GITHUB_TOKEN
-# ─────────────────────────────────────────────────────────────────────────────
+# COPY this file to your repo: .github/workflows/release-notes.yml
 
 name: Release Notes
 
@@ -32,14 +16,12 @@ on:
     types: [closed]
     branches: [main]
 
-# Prevent concurrent release-notes runs
 concurrency:
   group: release-notes
   cancel-in-progress: false
 
 jobs:
   release-notes:
-    # Only run on merged PRs that have a release label
     if: >-
       github.event.pull_request.merged == true &&
       (contains(github.event.pull_request.labels.*.name, 'release:major') ||
@@ -49,27 +31,23 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write        # push commits, tags, create releases
-      pull-requests: write   # comment on the merged PR
-      id-token: write        # required by claude-code-action OIDC
+      contents: write
+      pull-requests: write
+      id-token: write
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      # ── 2. Checkout skill ────────────────────────────────────────────────
-      # Adjust the repository to wherever you publish the release-notes skill.
       - name: Checkout release-notes skill
         uses: actions/checkout@v4
         with:
-          repository: Stocks-Up/release-notes-skill   # <-- adjust this
+          repository: Stocks-Up/release-notes-skill
           path: .release-notes-skill
 
-      # ── 3. Calculate version from PR labels ──────────────────────────────
       - name: Determine version
         id: version
         run: |
@@ -99,9 +77,8 @@ jobs:
           echo "current=$LATEST" >> "$GITHUB_OUTPUT"
           echo "new=$NEW"      >> "$GITHUB_OUTPUT"
           echo "### Version bump" >> "$GITHUB_STEP_SUMMARY"
-          echo "$LATEST → v$NEW ($BUMP)" >> "$GITHUB_STEP_SUMMARY"
+          echo "$LATEST -> v$NEW ($BUMP)" >> "$GITHUB_STEP_SUMMARY"
 
-      # ── 4. Setup runtimes ────────────────────────────────────────────────
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -117,16 +94,11 @@ jobs:
           pip install pyyaml boto3
           npm install -g puppeteer
 
-      # ── 5. Configure git identity ────────────────────────────────────────
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # ── 6. Write credentials to paths expected by .release-notes.yml ─────
-      #
-      # Reads the file paths from .release-notes.yml and writes the
-      # corresponding secrets so the scripts find them at runtime.
       - name: Setup credentials
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -140,7 +112,6 @@ jobs:
           config = yaml.safe_load(open(".release-notes.yml"))
           dist = config.get("distribution", {})
 
-          # Slack webhook
           slack = dist.get("slack", {})
           wh_file = slack.get("webhook_file", "")
           wh_value = os.environ.get("SLACK_WEBHOOK_URL", "")
@@ -148,9 +119,8 @@ jobs:
               path = os.path.expanduser(wh_file)
               os.makedirs(os.path.dirname(path), exist_ok=True)
               open(path, "w").write(wh_value)
-              print(f"Wrote Slack webhook to {path}")
+              print(f"  Slack webhook -> {path}")
 
-          # Gmail app password
           email = dist.get("email", {})
           pw_file = email.get("smtp_password_file", "")
           pw_value = os.environ.get("GMAIL_APP_PASSWORD", "")
@@ -158,9 +128,8 @@ jobs:
               path = os.path.expanduser(pw_file)
               os.makedirs(os.path.dirname(path), exist_ok=True)
               open(path, "w").write(pw_value)
-              print(f"Wrote Gmail app password to {path}")
+              print(f"  Gmail password -> {path}")
 
-          # AWS credentials (create a named profile matching the config)
           pdf = dist.get("pdf", {})
           profile = pdf.get("aws_profile", "")
           ak = os.environ.get("AWS_ACCESS_KEY_ID", "")
@@ -172,12 +141,11 @@ jobs:
                   f.write(f"[{profile}]\n")
                   f.write(f"aws_access_key_id={ak}\n")
                   f.write(f"aws_secret_access_key={sk}\n")
-              print(f"Wrote AWS profile [{profile}]")
+              print(f"  AWS profile [{profile}]")
 
-          print("Credentials setup complete")
+          print("  Credentials ready")
           SETUP
 
-      # ── 7. Run Claude to create release notes ───────────────────────────
       - name: Create release notes
         uses: anthropics/claude-code-action@v1
         with:
