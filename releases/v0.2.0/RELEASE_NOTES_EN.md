@@ -1,18 +1,23 @@
 # Release Notes 0.2.0
 
-### Real-time insights, stronger security, and global reach
+### More control, stronger security, and smarter notifications
 
-This release brings live dashboard analytics, two-factor authentication, French language support, and faster PDF exports to Kulu.
+This release gives you granular control over your notification preferences, adds two-factor authentication, real-time dashboard analytics, and French language support to Kulu.
 
 **What's New**
 
-📊 **Real-Time Dashboard Analytics**
-• Live dashboard updates powered by WebSocket, so your numbers are always current
-• Monitor key metrics as they happen without refreshing the page
+🔔 **Notification Preferences**
+• Choose exactly how and where you receive alerts — email, Slack, or in-app
+• Set preferences per category: release alerts, weekly digest, and security alerts
+• Your notification settings are saved and applied across all your devices
 
 🔐 **Two-Factor Authentication**
 • Protect your account with an extra layer of security at sign-in
 • Improved session management keeps you securely logged in across devices
+
+📊 **Real-Time Dashboard Analytics**
+• Live dashboard updates so your numbers are always current
+• Monitor key metrics as they happen without refreshing the page
 
 🌐 **French Language Support**
 • Full French localization throughout the application

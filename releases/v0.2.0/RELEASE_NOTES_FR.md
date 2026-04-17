@@ -1,18 +1,23 @@
 # Notes de version 0.2.0
 
-### Analyses en temps réel, sécurité renforcée et ouverture à l'international
+### Plus de contrôle, une sécurité renforcée et des notifications intelligentes
 
-Cette version apporte des tableaux de bord en temps réel, l'authentification à deux facteurs, la prise en charge du français et des exports PDF plus rapides à Kulu.
+Cette version vous offre un contrôle précis sur vos préférences de notification, ajoute l'authentification à deux facteurs, des tableaux de bord en temps réel et la prise en charge du français à Kulu.
 
 **Nouveautés**
 
-📊 **Tableaux de bord en temps réel**
-• Mises à jour instantanées grâce aux WebSocket : vos indicateurs sont toujours à jour
-• Suivez vos métriques clés au fil de l'eau, sans recharger la page
+🔔 **Préférences de notification**
+• Choisissez précisément comment et où recevoir vos alertes — par e-mail, Slack ou dans l'application
+• Définissez vos préférences par catégorie : alertes de version, récapitulatif hebdomadaire et alertes de sécurité
+• Vos paramètres de notification sont enregistrés et appliqués sur tous vos appareils
 
 🔐 **Authentification à deux facteurs**
 • Protégez votre compte avec une vérification supplémentaire à la connexion
 • La gestion améliorée des sessions vous maintient connecté en toute sécurité sur tous vos appareils
+
+📊 **Tableaux de bord en temps réel**
+• Mises à jour instantanées : vos indicateurs sont toujours à jour
+• Suivez vos métriques clés au fil de l'eau, sans recharger la page
 
 🌐 **Prise en charge du français**
 • Localisation complète de l'application en français
